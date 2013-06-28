@@ -10,23 +10,11 @@
 #include <memory.h>
 using namespace std;
 
-#ifdef _WIN32
-#define ENV 1
-#endif
-
-#ifdef __linux
-#define ENV 2
-#endif
-
-#ifdef MACRO
-#define ENV 3
-#endif
-
 //Particular Const
 #define NUM_OF_CITY 48
 
 //Basic Const
-#define POP_SIZE 100
+#define POP_SIZE 50
 #define MAX_GENERATION 100000
 #define NUM_OF_GENE NUM_OF_CITY
 #define P_CROSSOVER 0.7
@@ -43,7 +31,6 @@ int max_duration;
 //Basic Variable
 int generation;
 int best_record;
-int stable;
 int best_mem;
 int worst_mem;
 
@@ -67,6 +54,11 @@ public:
 	double rfitness;
 	double cfitness;
 	bool chosen;
+    void display(){
+        for (int i = 0;i < NUM_OF_GENE;i++)
+            cout << this->gene[i].order << " ";
+        cout << endl;
+    }
 };
 Genetype population[POP_SIZE + 1];
 Genetype newpopulation[POP_SIZE + 1];
@@ -104,10 +96,11 @@ void initialize()
 	//初始化种群
 	for (int i = 0;i < POP_SIZE;i++)
 	{
-        population[i].gene[0].order = rand() % NUM_OF_CITY;
+        population[i].gene[0].order = rand() % NUM_OF_CITY + 1;
         bool visit[NUM_OF_CITY + 1];
         for (int j = 1;j <= NUM_OF_CITY;j++)
             visit[j] = false;
+        visit[population[i].gene[0].order] = true;
         for (int j = 1;j < NUM_OF_GENE;j++){
             double minimum = 999999;
             int index = 1;
@@ -133,7 +126,7 @@ void initialize()
 //结合Grefenstetee解码进行适应性评价
 void evaluate()
 {
-    double sum;
+    double sum,t;
     for (int i = 0;i < POP_SIZE;i++){
         sum = 0;
         int origin[NUM_OF_GENE];
@@ -141,14 +134,12 @@ void evaluate()
             origin[j] = population[i].gene[j].order;
         for (int j = NUM_OF_GENE - 1;j >= 0;j--){
             for (int k = j - 1;k >= 0;k--){
-                if (population[i].gene[k].order <= population[i].gene[j].order)
-                  population[i].gene[j].order++;
+                if (origin[k] <= origin[j])
+                  origin[j]++;
             }
         }
         for (int j = 0;j < NUM_OF_GENE;j++)
-            sum += dist[population[i].gene[j].order][population[i].gene[(j + 1) % NUM_OF_GENE].order];
-        for (int j = 0;j < NUM_OF_GENE;j++)
-            population[i].gene[j].order = origin[j];
+            sum += dist[origin[j]][origin[(j + 1) % NUM_OF_GENE]];
         population[i].fitness = FACTOR / sum;
     }
 }
@@ -164,8 +155,8 @@ void opt_2(){
             origin[j] = population[i].gene[j].order;
         for (int j = NUM_OF_GENE - 1;j >= 0;j--){
             for (int k = j - 1;k >= 0;k--){
-                if (population[i].gene[k].order <= population[i].gene[j].order)
-                  population[i].gene[j].order++;
+                if (origin[k] <= origin[j])
+                    origin[j]++;
             }
         }
         int a,b,tmp;
@@ -174,20 +165,18 @@ void opt_2(){
         b = rand() % NUM_OF_GENE;
         while (a + 1 == b || b + 1 == a)
             b = rand() % NUM_OF_GENE;
-        tmp = population[i].gene[(a + 1) % NUM_OF_GENE].order;
-        population[i].gene[(a + 1) % NUM_OF_GENE].order = population[i].gene[b].order;
-        population[i].gene[b].order = tmp;
+        tmp = origin[(a + 1) % NUM_OF_GENE];
+        origin[(a + 1) % NUM_OF_GENE] = origin[b];
+        origin[b] = tmp;
         for (int j = 0;j < NUM_OF_CITY;j++)
-            sum += dist[population[i].gene[j].order][population[i].gene[(j + 1) % NUM_OF_CITY].order];
-        if (sum > FACTOR / population[i].fitness)
+            sum += dist[origin[j]][origin[(j + 1) % NUM_OF_CITY]];
+        if (FACTOR / sum > population[i].fitness)
             flag = true;
         if (flag) {
             for (int j = 0;j < NUM_OF_GENE;j++)
               for (int k = j + 1;k < NUM_OF_GENE;k++)
-                if (population[i].gene[k].order > population[i].gene[j].order)
-                  population[i].gene[k].order--;
-        }
-        else {
+                if (origin[k] > origin[j])
+                    origin[k]--;
             for (int j = 0;j < NUM_OF_GENE;j++)
                 population[i].gene[j].order = origin[j];
         }
@@ -207,8 +196,7 @@ void keep_best()
 			population[POP_SIZE].fitness = population[mem].fitness;
 		}
 	}
-	for (i = 0;i < NUM_OF_GENE;i++)
-		population[POP_SIZE].gene[i] = population[best_record].gene[i];
+    population[POP_SIZE] = population[best_record];
 }
 
 //精炼
@@ -248,19 +236,9 @@ void elitist()
 		}
 	}
 	if (best > population[POP_SIZE].fitness)
-	{
-		for (i = 0;i < NUM_OF_GENE;i++)
-			population[POP_SIZE].gene[i] = population[best_mem].gene[i];
-		population[POP_SIZE].fitness = population[best_mem].fitness;
-		stable = 0;
-	}
+        population[POP_SIZE]= population[best_mem];
 	else
-	{
-		for (i = 0;i < NUM_OF_GENE;i++)
-			population[worst_mem].gene[i] = population[POP_SIZE].gene[i];
-		population[worst_mem].fitness = population[POP_SIZE].fitness;
-		stable++;
-	}
+		population[worst_mem] = population[POP_SIZE];
 }
 
 //轮盘选择
@@ -372,29 +350,14 @@ void mutate()
 		{
 			x = (rand() % 1000) / 1000.0;
 			if (x < P_MUTATION * adjust[generation])
-			{
                 population[i].gene[j].order = rand() % order_table[j] + 1;
-//                opt_2();
-			}
 		}
 }
 
-//回滚
-void rollback()
-{
-	int i,j;
-	for (i = 0;i < POP_SIZE / 10;i++)
-	{
-		j = rand() % POP_SIZE;
-		substitute(j,POP_SIZE);
-	}
-	population[POP_SIZE] = population[0];
-}
-
 //数据记录
-void report()
+void report(int t)
 {
-	ofstream fout("output.txt",ios::app);
+	ofstream fout("output_no_opt" + to_string(t) + ".txt",ios::app);
 	fout << fixed << setprecision(4) << FACTOR / history_best.fitness << "\n";
 	fout.close();
 }
@@ -409,37 +372,37 @@ int main()
 	for (int i = 1;i <= MAX_GENERATION;i++)
 		adjust[i] = 0.3 + exp(float(-i));
 	srand((unsigned int)time(0));
-    ofstream fout("route.txt");
 	start = clock();
     count = 0;
     complete_percent = 0;
+    for (int t = 1;t <= 5;t++){
+    ofstream fout("route_no_opt" + to_string(t) + ".txt");
     generation = 0;
     initialize();
     history_best = population[POP_SIZE];
     ifstream fsin("answer.txt");
-    int a[48];
-    for (int i = 0;i < 48;i++)
+    int a[NUM_OF_CITY];
+    for (int i = 0;i < NUM_OF_CITY;i++)
       fsin >> a[i];
     fsin.close();
     double sum = 0;
     for (int j = 0;j < NUM_OF_GENE;j++)
-        sum += dist[a[j]][a[(j + 1) % 48]];
+        sum += dist[a[j]][a[(j + 1) % NUM_OF_CITY]];
     cout << "Best solution: " << sum << endl;
+    
     evaluate();
     keep_best();
     while (generation++ < MAX_GENERATION)
     {
         elitist();
-        select();
-        report();
-        crossover();
-        mutate();
-        if (stable >= MAX_STABLE)
-            rollback();
         if (population[POP_SIZE].fitness > history_best.fitness)
             history_best = population[POP_SIZE];
+        select();
+        report(t);
+        crossover();
+        mutate();
         evaluate();
-        opt_2();
+//        opt_2();
     }
     for (int j = NUM_OF_GENE - 1;j >= 0;j--){
         for (int k = j - 1;k >= 0;k--){
@@ -448,14 +411,14 @@ int main()
         }
     }
     for (int i = 0;i < NUM_OF_GENE;i++){
-        fout << history_best.gene[i].order + 1 << endl;
+        fout << history_best.gene[i].order << endl;
     }
     fout.close();
-    
+    }
 
     end = clock();
-    //cout << "\nCompleted.\nTime used: " << (double)(end - start) / (CLOCKS_PER_SEC * 60) << " min\n";
     cout << "Current solution: " << FACTOR / history_best.fitness << endl;
     printf("\nCompleted.\nTime used: %.2f min\n",(double)(end - start) / (CLOCKS_PER_SEC * 60));
+    
     return 0;
 }
